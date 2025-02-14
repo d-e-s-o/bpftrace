@@ -1,9 +1,21 @@
 #include <bcc/bcc_syms.h>
+#ifdef HAVE_BLAZESYM
+#include <blazesym.h>
+#endif
 
 #include "config.h"
 #include "usyms.h"
 
 #include "scopeguard.h"
+
+namespace {
+std::string stringify_addr(uint64_t addr)
+{
+  std::ostringstream symbol;
+  symbol << reinterpret_cast<void *>(addr);
+  return symbol.str();
+}
+} // namespace
 
 namespace bpftrace {
 
@@ -22,6 +34,11 @@ Usyms::~Usyms()
     if (pair.second)
       bcc_free_symcache(pair.second, pair.first);
   }
+
+#ifdef HAVE_BLAZESYM
+  if (symbolizer_)
+    blaze_symbolizer_free(symbolizer_);
+#endif
 }
 
 void Usyms::cache_bcc(const std::string &elf_file)
@@ -44,8 +61,36 @@ void Usyms::cache_bcc(const std::string &elf_file)
       pid_sym_[pid] = bcc_symcache_new(pid, &get_symbol_opts());
 }
 
+#ifdef HAVE_BLAZESYM
+void Usyms::cache_blazesym(const std::string &elf_file)
+{
+  if (symbolizer_ == nullptr) {
+    symbolizer_ = blaze_symbolizer_new();
+    if (symbolizer_ == nullptr)
+      return;
+  }
+
+  for (int pid : get_pids_for_program(elf_file)) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+    blaze_cache_src_process cache = {
+      .type_size = sizeof(cache),
+      .pid = static_cast<uint32_t>(pid),
+      .cache_vmas = true,
+    };
+#pragma GCC diagnostic pop
+
+    blaze_symbolize_cache_process(symbolizer_, &cache);
+  }
+}
+#endif
+
 void Usyms::cache(const std::string &elf_file)
 {
+#ifdef HAVE_BLAZESYM
+  if (config_.get(ConfigKeyBool::use_blazesym))
+    return cache_blazesym(elf_file);
+#endif
   return cache_bcc(elf_file);
 }
 
@@ -139,12 +184,78 @@ std::string Usyms::resolve_bcc(uint64_t addr,
   return symbol.str();
 }
 
+#ifdef HAVE_BLAZESYM
+std::optional<std::string> Usyms::resolve_blazesym_int(
+    uint64_t addr,
+    int32_t pid,
+    const std::string &pid_exe,
+    bool show_offset,
+    bool show_module)
+{
+  if (symbolizer_ == nullptr) {
+    symbolizer_ = blaze_symbolizer_new();
+    if (symbolizer_ == nullptr)
+      return std::nullopt;
+  }
+
+  std::ostringstream symbol;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+  blaze_symbolize_src_process src = {
+    .type_size = sizeof(src),
+    .pid = pid,
+    // TODO: Enable usage of debug symbols at some point.
+    .debug_syms = false,
+    .perf_map = true,
+  };
+#pragma GCC diagnostic pop
+  uint64_t addrs[1] = { addr };
+
+  const blaze_syms *syms = blaze_symbolize_process_abs_addrs(
+      symbolizer_, &src, addrs, ARRAY_SIZE(addrs));
+  if (syms == nullptr)
+    return std::nullopt;
+  SCOPE_EXIT
+  {
+    blaze_syms_free(syms);
+  };
+
+  const blaze_sym *sym = &syms->syms[0];
+  if (sym->name == nullptr) {
+    return std::nullopt;
+  }
+
+  symbol << sym->name;
+  if (show_offset) {
+    auto offset = addr - sym->addr;
+    symbol << "+" << offset;
+  }
+  return symbol.str();
+}
+std::string Usyms::resolve_blazesym(uint64_t addr,
+                                    int32_t pid,
+                                    const std::string &pid_exe,
+                                    bool show_offset,
+                                    bool show_module)
+{
+  if (auto sym = resolve_blazesym_int(
+          addr, pid, pid_exe, show_offset, show_module)) {
+    return *sym;
+  }
+  return stringify_addr(addr);
+}
+#endif
+
 std::string Usyms::resolve(uint64_t addr,
                            int32_t pid,
                            const std::string &pid_exe,
                            bool show_offset,
                            bool show_module)
 {
+#ifdef HAVE_BLAZESYM
+  if (config_.get(ConfigKeyBool::use_blazesym))
+    return resolve_blazesym(addr, pid, pid_exe, show_offset, show_module);
+#endif
   return resolve_bcc(addr, pid, pid_exe, show_offset, show_module);
 }
 
