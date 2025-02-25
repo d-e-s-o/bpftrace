@@ -4,6 +4,7 @@
 #endif
 
 #include "config.h"
+#include "log.h"
 #include "usyms.h"
 
 #include "scopeguard.h"
@@ -105,6 +106,8 @@ std::string Usyms::resolve_bcc(uint64_t addr,
   std::ostringstream symbol;
   void *psyms = nullptr;
 
+  LOG(ERROR) << "USING BCC";
+
   if (cache_type == UserSymbolCacheType::per_program) {
     if (!pid_exe.empty()) {
       // try to resolve symbol directly from program file
@@ -192,6 +195,7 @@ std::optional<std::string> Usyms::resolve_blazesym_int(
     bool show_offset,
     bool show_module)
 {
+  LOG(ERROR) << "USING BLAZESYM";
   if (symbolizer_ == nullptr) {
     symbolizer_ = blaze_symbolizer_new();
     if (symbolizer_ == nullptr)

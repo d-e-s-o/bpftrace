@@ -5,6 +5,7 @@
 #include <blazesym.h>
 #endif
 
+#include "log.h"
 #include "config.h"
 #include "ksyms.h"
 #include "scopeguard.h"
@@ -38,6 +39,7 @@ Ksyms::~Ksyms()
 std::string Ksyms::resolve_bcc(uint64_t addr, bool show_offset)
 {
   struct bcc_symbol ksym;
+  LOG(ERROR) << "USING BCC";
 
   if (!ksyms_)
     ksyms_ = bcc_symcache_new(-1, nullptr);
@@ -56,6 +58,7 @@ std::string Ksyms::resolve_bcc(uint64_t addr, bool show_offset)
 std::optional<std::string> Ksyms::resolve_blazesym_int(uint64_t addr,
                                                        bool show_offset)
 {
+  LOG(ERROR) << "USING BLAZESYM";
   if (symbolizer_ == nullptr) {
     symbolizer_ = blaze_symbolizer_new();
     if (symbolizer_ == nullptr)
