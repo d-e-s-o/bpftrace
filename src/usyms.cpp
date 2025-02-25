@@ -4,6 +4,7 @@
 #endif
 
 #include "config.h"
+#include "log.h"
 #include "usyms.h"
 
 #include "scopeguard.h"
@@ -124,6 +125,8 @@ std::string Usyms::resolve_bcc(uint64_t addr,
   std::ostringstream symbol;
   void *psyms = nullptr;
 
+  LOG(ERROR) << "USING BCC";
+
   if (cache_type == UserSymbolCacheType::per_program) {
     if (!pid_exe.empty()) {
       // try to resolve symbol directly from program file
@@ -211,6 +214,8 @@ std::optional<std::string> Usyms::resolve_blazesym_int(
     bool show_offset,
     bool show_module)
 {
+  LOG(ERROR) << "USING BLAZESYM";
+
   (void)pid_exe;
 
   if (symbolizer_ == nullptr) {
@@ -272,6 +277,19 @@ std::string Usyms::resolve_blazesym(uint64_t addr,
                                     bool show_offset,
                                     bool show_module)
 {
+  auto cache_type = config_.get(ConfigKeyUserSymbolCacheType::default_);
+  switch (cache_type) {
+    case UserSymbolCacheType::per_program:
+      LOG(ERROR) << "CACHE TYPE: per_program";
+      break;
+    case UserSymbolCacheType::per_pid:
+      LOG(ERROR) << "CACHE TYPE: per_pid";
+      break;
+    case UserSymbolCacheType::none:
+      LOG(ERROR) << "CACHE TYPE: none";
+      break;
+  }
+
   if (auto sym = resolve_blazesym_int(
           addr, pid, pid_exe, show_offset, show_module)) {
     return *sym;
