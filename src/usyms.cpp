@@ -93,13 +93,13 @@ void Usyms::cache_blazesym(const std::string &elf_file)
   if (cache_type == UserSymbolCacheType::per_program) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-      blaze_cache_src_elf cache = {
-        .type_size = sizeof(cache),
-        .path = elf_file.c_str(),
-      };
+    blaze_cache_src_elf cache = {
+      .type_size = sizeof(cache),
+      .path = elf_file.c_str(),
+    };
 #pragma GCC diagnostic pop
 
-      blaze_symbolize_cache_process(symbolizer_, &cache);
+    blaze_symbolize_cache_process(symbolizer_, &cache);
   }
 
   if (cache_type == UserSymbolCacheType::per_pid) {
@@ -248,6 +248,42 @@ std::optional<std::string> Usyms::resolve_blazesym_int(
   };
 
   std::ostringstream symbol;
+  uint64_t addrs[1] = { addr };
+
+  if (cache_type == UserSymbolCacheType::per_program) {
+    if (!pid_exe.empty()) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+      blaze_symbolize_src_elf src = {
+        .type_size = sizeof(src),
+        .path = pid_exe.c_str(),
+        // TODO: Enable usage of debug symbols at some point.
+        .debug_syms = false,
+      };
+#pragma GCC diagnostic pop
+      const blaze_syms *syms = blaze_symbolize_elf_virt_offset(
+          symbolizer_, &src, addrs, ARRAY_SIZE(addrs));
+      if (syms != nullptr) {
+        SCOPE_EXIT
+        {
+          blaze_syms_free(syms);
+        };
+
+        if (sym->name != nullptr) {
+          symbol << sym->name;
+          if (show_offset)
+            symbol << "+" << addr - sym->addr;
+          if (show_module)
+            symbol << " (" << pid_exe << ")";
+          return symbol.str();
+        }
+      }
+    }
+  }
+
+  if (cache_type == UserSymbolCacheType::per_pid) {
+  }
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
   blaze_symbolize_src_process src = {
@@ -258,7 +294,6 @@ std::optional<std::string> Usyms::resolve_blazesym_int(
     .perf_map = true,
   };
 #pragma GCC diagnostic pop
-  uint64_t addrs[1] = { addr };
 
   const blaze_syms *syms = blaze_symbolize_process_abs_addrs(
       symbolizer_, &src, addrs, ARRAY_SIZE(addrs));
@@ -275,10 +310,8 @@ std::optional<std::string> Usyms::resolve_blazesym_int(
   }
 
   symbol << sym->name;
-  if (show_offset) {
-    auto offset = addr - sym->addr;
-    symbol << "+" << offset;
-  }
+  if (show_offset)
+    symbol << "+" << addr - sym->addr;
   // TODO: Should use actual "module". Not yet available in blazesym.
   if (show_module) {
     if (sym->module != nullptr)
