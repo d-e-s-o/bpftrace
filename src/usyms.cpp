@@ -90,17 +90,31 @@ void Usyms::cache_blazesym(const std::string &elf_file)
       return;
   }
 
-  for (int pid : get_pids_for_program(elf_file)) {
+  if (cache_type == UserSymbolCacheType::per_program) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-    blaze_cache_src_process cache = {
-      .type_size = sizeof(cache),
-      .pid = static_cast<uint32_t>(pid),
-      .cache_vmas = true,
-    };
+      blaze_cache_src_elf cache = {
+        .type_size = sizeof(cache),
+        .path = elf_file.c_str(),
+      };
 #pragma GCC diagnostic pop
 
-    blaze_symbolize_cache_process(symbolizer_, &cache);
+      blaze_symbolize_cache_process(symbolizer_, &cache);
+  }
+
+  if (cache_type == UserSymbolCacheType::per_pid) {
+    for (int pid : get_pids_for_program(elf_file)) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+      blaze_cache_src_process cache = {
+        .type_size = sizeof(cache),
+        .pid = static_cast<uint32_t>(pid),
+        .cache_vmas = true,
+      };
+#pragma GCC diagnostic pop
+
+      blaze_symbolize_cache_process(symbolizer_, &cache);
+    }
   }
 }
 #endif
