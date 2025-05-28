@@ -13,6 +13,7 @@ RUN apk add --update \
   bcc-static \
   binutils-dev \
   bison \
+  blazesym-devel \
   blazesym-static \
   bpftool \
   bzip2-static \
